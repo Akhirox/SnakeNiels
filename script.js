@@ -29,7 +29,7 @@ let eatTimer = 0;
 let currentSpeed = BASE_SPEED;
 let speedBoostTimer = 0;
 
-// --- CHARGEMENT DES ASSETS ---
+// --- CHARGEMENT DES ASSETS & SONS ---
 function loadImage(src) {
     const img = new Image();
     img.src = src;
@@ -46,6 +46,24 @@ const assets = {
     bonusVitesse: loadImage('assets/stabi_bonus.png')
 };
 
+// Librairie de sons (URLs directes libres de droits)
+const sounds = {
+    click: new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3'),
+    eat: new Audio('https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3'),
+    powerup: new Audio('https://assets.mixkit.co/active_storage/sfx/2018/2018-preview.mp3'),
+    die: new Audio('https://assets.mixkit.co/active_storage/sfx/3148/3148-preview.mp3'),
+    win: new Audio('https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3')
+};
+
+// Fonction pour jouer un son proprement (permet les sons superposés)
+function playSound(audioElement) {
+    // Cloner le nœud permet de jouer le même son plusieurs fois très vite
+    const soundClone = audioElement.cloneNode();
+    soundClone.volume = 0.5; // On met le volume à 50% pour ne pas exploser les oreilles
+    soundClone.play().catch(e => console.log("Son bloqué par le navigateur", e));
+}
+
+
 // --- MOTEUR PHYSIQUE ÉCRAN TITRE ---
 const titleCanvas = document.getElementById('titleCanvas');
 const tCtx = titleCanvas.getContext('2d');
@@ -55,57 +73,49 @@ let mouse = { x: -1000, y: -1000 };
 
 function initTitlePhysics() {
     bouncers = [];
-    // Combine lettres et colis pour l'animation
     const pools = [...assets.lettres, ...assets.colis];
     
-    // Crée 15 objets rebondissants
     for(let i=0; i<15; i++) {
         bouncers.push({
             x: Math.random() * (titleCanvas.width - 100) + 50,
             y: Math.random() * (titleCanvas.height - 100) + 50,
-            vx: (Math.random() - 0.5) * 6, // Vitesse X aléatoire
-            vy: (Math.random() - 0.5) * 6, // Vitesse Y aléatoire
-            size: 40 + Math.random() * 30, // Taille aléatoire
+            vx: (Math.random() - 0.5) * 6, 
+            vy: (Math.random() - 0.5) * 6, 
+            size: 40 + Math.random() * 30, 
             img: pools[Math.floor(Math.random() * pools.length)],
             rot: Math.random() * Math.PI * 2,
             rotSpeed: (Math.random() - 0.5) * 0.1
         });
     }
-    
     if(!titleAnimId) titleLoop();
 }
 
 function titleLoop() {
     tCtx.clearRect(0, 0, titleCanvas.width, titleCanvas.height);
-    
     for(let b of bouncers) {
         b.x += b.vx;
         b.y += b.vy;
         b.rot += b.rotSpeed;
 
-        // Rebond sur les murs
         if(b.x - b.size/2 < 0 || b.x + b.size/2 > titleCanvas.width) b.vx *= -1;
         if(b.y - b.size/2 < 0 || b.y + b.size/2 > titleCanvas.height) b.vy *= -1;
 
-        // Interaction avec la souris (Répulsion)
         let dx = b.x - mouse.x;
         let dy = b.y - mouse.y;
         let dist = Math.hypot(dx, dy);
         
-        if(dist < 120) { // Si la souris est proche
-            let force = (120 - dist) / 120; // Plus c'est proche, plus la force est grande
+        if(dist < 120) { 
+            let force = (120 - dist) / 120; 
             b.vx += (dx / dist) * force * 2;
             b.vy += (dy / dist) * force * 2;
         }
 
-        // Friction douce pour ne pas qu'ils accélèrent à l'infini avec la souris
         let speed = Math.hypot(b.vx, b.vy);
         if(speed > 5) {
             b.vx *= 0.98;
             b.vy *= 0.98;
         }
 
-        // Dessin
         if(b.img && b.img.complete) {
             tCtx.save();
             tCtx.translate(b.x, b.y);
@@ -117,7 +127,6 @@ function titleLoop() {
     titleAnimId = requestAnimationFrame(titleLoop);
 }
 
-// Suivi de la souris sur l'écran titre
 document.getElementById('titleScreen').addEventListener('mousemove', (e) => {
     const rect = titleCanvas.getBoundingClientRect();
     mouse.x = e.clientX - rect.left;
@@ -141,21 +150,22 @@ function getSavedLevel() {
 
 // --- GESTION DES MENUS ---
 function showTitleScreen() {
+    playSound(sounds.click); // <-- SON AU CLIC
     document.getElementById('mainMenu').classList.add('hidden');
     document.getElementById('titleScreen').classList.remove('hidden');
-    // On relance la physique de l'écran titre
     initTitlePhysics(); 
 }
 
 function enterLevelSelect() {
+    playSound(sounds.click); // <-- SON AU CLIC
     document.getElementById('titleScreen').classList.add('hidden');
-    // On arrête la physique pour économiser les perfs
     cancelAnimationFrame(titleAnimId);
     titleAnimId = null;
     showMainMenu();
 }
 
 function showMainMenu() {
+    if (isPlaying) playSound(sounds.click); // <-- SON AU CLIC (seulement si on cliquait en jeu/menu)
     isPlaying = false;
     cancelAnimationFrame(animationId);
     
@@ -178,7 +188,10 @@ function showMainMenu() {
             btn.classList.add('locked');
             btn.disabled = true; 
         } else {
-            btn.onclick = () => startGame(i);
+            btn.onclick = () => {
+                playSound(sounds.click); // <-- SON AU CLIC
+                startGame(i);
+            };
         }
         grid.appendChild(btn);
     }
@@ -280,7 +293,9 @@ function update() {
     snakePath.unshift({ x: head.x, y: head.y });
     if (snakePath.length > snakeLength) snakePath.pop();
 
+    // Manger la nourriture
     if (Math.hypot(head.x - food.x, head.y - food.y) < BASE_SIZE) {
+        playSound(sounds.eat); // <-- SON MANGER
         score += food.points;
         snakeLength += food.growth;
         scoreElement.innerText = score;
@@ -290,7 +305,9 @@ function update() {
         spawnFood();
     }
 
+    // Prendre le bonus de vitesse
     if (speedBonusItem && Math.hypot(head.x - speedBonusItem.x, head.y - speedBonusItem.y) < BASE_SIZE) {
+        playSound(sounds.powerup); // <-- SON POWERUP
         currentSpeed = BASE_SPEED * 1.5;
         speedBoostTimer = 300; 
         speedBonusItem = null; 
@@ -298,6 +315,7 @@ function update() {
         eatTimer = 10;
     }
 
+    // Collisions mortelles
     for (let obs of obstacles) {
         if (Math.hypot(head.x - obs.x, head.y - obs.y) < BASE_SIZE * 0.7) {
             triggerGameOver();
@@ -346,16 +364,11 @@ function draw() {
         ctx.stroke();
     }
 
-    // Dessin du Bonus de vitesse (Effet néon + flottement, sans rotation)
     if (speedBonusItem && speedBonusItem.img && speedBonusItem.img.complete) {
         ctx.save();
-        // Effet lumineux/Glow
         ctx.shadowBlur = 20;
         ctx.shadowColor = '#14b8a6'; 
-        
-        // Flottement haut/bas
         const floatY = Math.sin(Date.now() / 150) * 5; 
-        
         ctx.drawImage(speedBonusItem.img, speedBonusItem.x - BASE_SIZE/2, speedBonusItem.y - BASE_SIZE/2 + floatY, BASE_SIZE, BASE_SIZE);
         ctx.restore();
     }
@@ -391,12 +404,14 @@ function gameLoop() {
 }
 
 function triggerGameOver() {
+    playSound(sounds.die); // <-- SON GAMEOVER
     isPlaying = false;
     document.getElementById('finalScore').innerText = score;
     document.getElementById('gameOverScreen').classList.remove('hidden');
 }
 
 function triggerLevelComplete() {
+    playSound(sounds.win); // <-- SON VICTOIRE
     isPlaying = false;
     if (currentLevel >= maxLevelUnlocked && currentLevel < MAX_LEVELS) {
         maxLevelUnlocked = currentLevel + 1;
@@ -431,7 +446,7 @@ window.addEventListener('keydown', e => {
     }
 });
 
-// Lance l'animation de l'écran titre au démarrage de la page
+// Lance l'animation au démarrage de la page
 window.onload = () => {
     initTitlePhysics();
 };
